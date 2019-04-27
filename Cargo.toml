@@ -10,3 +10,5 @@ path = "lib.rs"
 
 [dependencies]
 failure = "0.1.5"
+ron = "0.5.1"
+serde = "1.0.90"

@@ -1,70 +1,50 @@
-#[macro_use]
-extern crate failure;
+use serde::de::DeserializeOwned;
 
 pub trait ConfigType {
-    fn is_leaf() -> bool;
-    fn set(&mut self, path: Path, value: Value) -> Result<(), failure::Error>;
-    fn get_paths() -> Vec<(Path, Type)>;
-}
-
-impl ConfigType for f32 {
+    fn set(&mut self, path: Path, value: String) -> Result<(), failure::Error>;
     fn is_leaf() -> bool {
         true
     }
-    fn set(&mut self, _path: Path, value: Value) -> Result<(), failure::Error> {
-        if let Value::Num(s) = value {
-            *self = s;
-            Ok(())
-        } else {
-            bail!("f32::set: wrong value type")
-        }
-    }
-    fn get_paths() -> Vec<(Path, Type)> {
+    fn get_paths() -> Vec<Path> {
         Vec::new()
     }
 }
+
+macro_rules! basic_impl {
+    ($ty:ty) => {
+        impl ConfigType for $ty {
+            fn set(&mut self, _path: Path, value: String) -> Result<(), failure::Error> {
+                *self = ron::de::from_str(&value)?;
+                Ok(())
+            }
+        }
+    }
+}
+basic_impl!(i8);
+basic_impl!(i16);
+basic_impl!(i32);
+basic_impl!(i64);
+
+basic_impl!(u8);
+basic_impl!(u16);
+basic_impl!(u32);
+basic_impl!(u64);
+
+basic_impl!(f32);
+basic_impl!(f64);
+
+basic_impl!(bool);
+
 impl ConfigType for String {
-    fn is_leaf() -> bool {
-        true
-    }
-    fn set(&mut self, _path: Path, value: Value) -> Result<(), failure::Error> {
-        if let Value::String(s) = value {
-            *self = s;
-            Ok(())
-        } else {
-            bail!("f32::set: wrong value type")
-        }
-    }
-    fn get_paths() -> Vec<(Path, Type)> {
-        Vec::new()
+    fn set(&mut self, _path: Path, value: String) -> Result<(), failure::Error> {
+        *self = value;
+        Ok(())
     }
 }
-
-#[derive(Copy, Clone)]
-pub enum Type {
-    String,
-    Num,
-}
-
-#[derive(Clone)]
-pub enum Value {
-    Num (f32),
-    String (String),
-}
-impl Value {
-    pub fn as_num(self) -> Result<f32, failure::Error> {
-        if let Value::Num(num) = self {
-            Ok(num)
-        } else {
-            bail!("Value::as_num: not a Num")
-        }
-    }
-    pub fn as_string(self) -> Result<String, failure::Error> {
-        if let Value::String(string) = self {
-            Ok(string)
-        } else {
-            bail!("Value::as_strin: not a String")
-        }
+impl<X: DeserializeOwned, Y: DeserializeOwned> ConfigType for (X, Y) {
+    fn set(&mut self, _path: Path, value: String) -> Result<(), failure::Error> {
+        *self = ron::de::from_str(&value)?;
+        Ok(())
     }
 }
 
@@ -105,19 +85,11 @@ macro_rules! is_f32 {
 
 #[macro_export]
 macro_rules! get_paths_recurse {
-    { $x:ident : String, $paths:ident } => {
-        let field_name = stringify!($x).to_string();
-        $paths.push(Path::new(vec![field_name]), config::Type::String);
-    };
-    { $x:ident : f32, $paths:ident } => {
-        let field_name = stringify!($x).to_string();
-        $paths.push(Path::new(vec![field_name]), config::Type::Num);
-    };
     { $x:ident : $y:ty, $paths:ident } => {
         let field_name = stringify!($x).to_string();
-            for (mut path, ty) in <$y>::get_paths() {
+            for mut path in <$y>::get_paths() {
                 path.push_front(field_name.clone());
-                $paths.push((path, ty));
+                $paths.push(path);
             }
     };
 }
@@ -140,7 +112,7 @@ macro_rules! config {
         }
         impl config::ConfigType for $name {
             fn is_leaf() -> bool {false}
-            fn set(&mut self, mut path: config::Path, value: config::Value) -> Result<(), failure::Error> {
+            fn set(&mut self, mut path: config::Path, value: String) -> Result<(), failure::Error> {
                 use failure::bail;
                 // TODO/NOTE: path could also easily be &mut if that performs better
 
@@ -157,7 +129,7 @@ macro_rules! config {
                 }
                 Ok(())
             }
-            fn get_paths() -> Vec<(config::Path, config::Type)> {
+            fn get_paths() -> Vec<config::Path> {
                 let mut paths = Vec::new();
                 $( {
                     get_paths_recurse!($x: $y, paths);
