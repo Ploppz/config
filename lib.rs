@@ -1,4 +1,9 @@
+#![feature(test)]
+extern crate test;
+
 use serde::de::DeserializeOwned;
+
+pub mod observer;
 
 pub trait ConfigType {
     fn set(&mut self, path: Path, value: String) -> Result<(), failure::Error>;

@@ -12,3 +12,7 @@ path = "lib.rs"
 failure = "0.1.5"
 ron = "0.5.1"
 serde = "1.0.90"
+
+[dev-dependencies]
+quickcheck = "0.8"
+quickcheck_macros = "0.8"
