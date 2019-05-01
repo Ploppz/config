@@ -167,4 +167,38 @@ mod tests {
             struct Empty {}
         ];
     }
+
+    #[test]
+    fn single_entry_allows_assignment_and_creation() {
+        config![
+            struct Single {
+                entry: f32,
+            }
+        ];
+
+        let mut x = Single { entry: 0.0 };
+        x.entry = 1.0;
+        assert_eq![1.0, x.entry];
+    }
+
+    #[test]
+    fn single_entry_in_nested_structure() {
+        config![
+            struct Single {
+                entry: Entry {
+                    entry: Entry2 {
+                        real_entry: f32,
+                    },
+                },
+            }
+        ];
+
+        let mut x = Single {
+            entry: Entry {
+                entry: Entry2 { real_entry: 0.0 },
+            },
+        };
+        x.entry.entry.real_entry = 1.0;
+        assert_eq![1.0, x.entry.entry.real_entry];
+    }
 }
