@@ -1,12 +1,14 @@
 #![feature(test)]
 extern crate test;
 
+pub use crate::observer::Observe;
 pub use failure::bail;
 use serde::de::DeserializeOwned;
 
 pub mod observer;
 
 pub trait ConfigType {
+    fn check_set(path: &[&str], value: &str) -> Result<(), failure::Error>;
     fn set(&mut self, path: &[&str], value: &str) -> Result<(), failure::Error>;
     fn get_descendants() -> &'static [&'static str] {
         &[]
@@ -16,6 +18,14 @@ pub trait ConfigType {
 macro_rules! basic_impl {
     ($ty:ty) => {
         impl $crate::ConfigType for $ty {
+            fn check_set(path: &[&str], value: &str) -> Result<(), failure::Error> {
+                if path.is_empty() {
+                    ron::de::from_str::<Self>(value)?;
+                    Ok(())
+                } else {
+                    bail!["Path too long"]
+                }
+            }
             fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
                 *self = ron::de::from_str(value)?;
                 Ok(())
@@ -39,6 +49,13 @@ basic_impl!(f64);
 basic_impl!(bool);
 
 impl ConfigType for String {
+    fn check_set(path: &[&str], value: &str) -> Result<(), failure::Error> {
+        if path.is_empty() {
+            Ok(())
+        } else {
+            bail!["Path too long"]
+        }
+    }
     fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
         *self = value.into();
         Ok(())
@@ -46,6 +63,9 @@ impl ConfigType for String {
 }
 
 impl<X: DeserializeOwned, Y: DeserializeOwned> ConfigType for (X, Y) {
+    fn check_set(path: &[&str], value: &str) -> Result<(), failure::Error> {
+        Ok(())
+    }
     fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
         *self = ron::de::from_str(value)?;
         Ok(())
@@ -100,6 +120,22 @@ macro_rules! config {
             $(pub $x: $y),*
         }
         impl $crate::ConfigType for $name {
+            fn check_set(path: &[&str], value: &str) -> Result<(), failure::Error> {
+                if path.is_empty() {
+                    $crate::bail!["Path is too short"];
+                }
+
+                match path[0] {
+                    $(
+                    stringify![$x] => {
+                        <$y>::check_set(&path[1..], value)
+                    }
+                    )*
+                    _ => {
+                        $crate::bail!["Path not found"]
+                    }
+                }
+            }
             fn set(&mut self, mut path: &[&str], value: &str) -> Result<(), failure::Error> {
                 if path.is_empty() {
                     $crate::bail!["Path is too short"];
@@ -108,14 +144,13 @@ macro_rules! config {
                 match path[0] {
                     $(
                     stringify![$x] => {
-                        self.$x.set(&path[1..], value);
+                        self.$x.set(&path[1..], value)
                     }
                     )*
                     _ => {
-                        $crate::bail!["Path not found"];
+                        $crate::bail!["Path not found"]
                     }
                 }
-                Ok(())
             }
             fn get_descendants() -> &'static [&'static str] {
                 &[$(stringify![$x]),*]
@@ -199,12 +234,13 @@ mod tests {
         ];
 
         let mut x = Single::default();
+        assert![Single::check_set(&["entry"], "0.3").is_ok()];
+        assert![Single::check_set(&["entry"], "string").is_err()];
+        assert![Single::check_set(&["kek", "nice"], "3").is_ok()];
+        assert![Single::check_set(&["kek"], "123").is_err()];
+        assert![Single::check_set(&["kek", "nice"], "0.3").is_err()];
+
         x.set(&["entry"], "0.3");
         assert_eq![0.3, x.entry];
-        // let vec: Vec<Path> = vec![];
-        // assert_eq![vec, Single::get_paths()];
-        for i in Single::get_descendants() {
-            println!["{}", i];
-        }
     }
 }
