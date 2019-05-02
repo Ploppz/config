@@ -12,8 +12,7 @@ pub trait ConfigType {
         mut path: impl Iterator<Item = &'a str>,
         value: &str,
     ) -> Result<(), failure::Error>;
-    fn set(&mut self, path: &[&str], value: &str) -> Result<(), failure::Error>;
-    fn set2<'a>(
+    fn set<'a>(
         &mut self,
         mut path: impl Iterator<Item = &'a str>,
         value: &str,
@@ -37,11 +36,7 @@ macro_rules! basic_impl {
                     $crate::bail!["Path too long"]
                 }
             }
-            fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
-                *self = ron::de::from_str(value)?;
-                Ok(())
-            }
-            fn set2<'a>(
+            fn set<'a>(
                 &mut self,
                 mut path: impl Iterator<Item = &'a str>,
                 value: &str,
@@ -81,11 +76,7 @@ impl ConfigType for String {
             bail!["Path too long"]
         }
     }
-    fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
-        *self = value.into();
-        Ok(())
-    }
-    fn set2<'a>(
+    fn set<'a>(
         &mut self,
         mut path: impl Iterator<Item = &'a str>,
         value: &str,
@@ -103,13 +94,13 @@ impl<X: DeserializeOwned, Y: DeserializeOwned> ConfigType for (X, Y) {
         mut path: impl Iterator<Item = &'a str>,
         value: &str,
     ) -> Result<(), failure::Error> {
+        if let Some(item) = path.next() {
+            bail!["Path too long"];
+        }
+        ron::de::from_str::<Self>(value)?;
         Ok(())
     }
-    fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
-        *self = ron::de::from_str(value)?;
-        Ok(())
-    }
-    fn set2<'a>(
+    fn set<'a>(
         &mut self,
         mut path: impl Iterator<Item = &'a str>,
         value: &str,
@@ -164,28 +155,12 @@ macro_rules! config {
                     }
                 }
             }
-            fn set(&mut self, mut path: &[&str], value: &str) -> Result<(), failure::Error> {
-                if path.is_empty() {
-                    $crate::bail!["Path is too short"];
-                }
-
-                match path[0] {
-                    $(
-                    stringify![$x] => {
-                        self.$x.set(&path[1..], value)
-                    }
-                    )*
-                    _ => {
-                        $crate::bail!["Path not found"]
-                    }
-                }
-            }
-            fn set2<'a>(&mut self, mut path: impl Iterator<Item = &'a str>, value: &str) -> Result<(), failure::Error> {
+            fn set<'a>(&mut self, mut path: impl Iterator<Item = &'a str>, value: &str) -> Result<(), failure::Error> {
                 if let Some(item) = path.next() {
                     match item {
                         $(
                             stringify![$x] => {
-                                self.$x.set2(path, value)
+                                self.$x.set(path, value)
                             }
                         )*
                         _ => {
@@ -223,6 +198,7 @@ macro_rules! config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::iter::once;
 
     #[test]
     fn empty_config() {
@@ -278,16 +254,16 @@ mod tests {
         ];
 
         let mut x = Single::default();
-        assert![Single::check_set(std::iter::once("entry"), "0.3").is_ok()];
-        assert![Single::check_set(std::iter::once("entry"), "string").is_err()];
+        assert![Single::check_set(once("entry"), "0.3").is_ok()];
+        assert![Single::check_set(once("entry"), "string").is_err()];
         assert![Single::check_set("kek.nice".split('.'), "3").is_ok()];
-        assert![Single::check_set(std::iter::once("kek"), "123").is_err()];
+        assert![Single::check_set(once("kek"), "123").is_err()];
         assert![Single::check_set("kek.nice".split('.'), "0.3").is_err()];
 
-        x.set(&["entry"], "0.3");
+        x.set(once("entry"), "0.3");
         assert_eq![0.3, x.entry];
 
-        x.set2("kek.nice".split('.'), "1234");
+        x.set("kek.nice".split('.'), "1234");
         assert_eq![1234, x.kek.nice];
     }
 
