@@ -72,27 +72,6 @@ impl<X: DeserializeOwned, Y: DeserializeOwned> ConfigType for (X, Y) {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Path {
-    nodes: Vec<String>,
-}
-impl Path {
-    pub fn new(nodes: Vec<String>) -> Path {
-        Path {
-            nodes: nodes.into_iter().rev().collect(),
-        }
-    }
-    pub fn pop_front(&mut self) -> Option<String> {
-        self.nodes.pop()
-    }
-    pub fn push_front(&mut self, value: String) {
-        self.nodes.push(value)
-    }
-    pub fn len(&self) -> usize {
-        self.nodes.len()
-    }
-}
-
 #[macro_export]
 macro_rules! get_paths_recurse {
     { $x:ident : $y:ty, $paths:ident } => {
