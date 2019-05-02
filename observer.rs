@@ -226,7 +226,8 @@ mod tests {
     }
 
     #[quickcheck_macros::quickcheck]
-    fn dependency_set_and_copare_works(value: i32, mut count: u16) {
+    fn dependency_set_and_compare_works(mut value: i32, mut count: u16) {
+        value = value.max(1);
         count = count.max(1);
 
         struct Main {
