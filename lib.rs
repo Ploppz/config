@@ -8,7 +8,10 @@ use serde::de::DeserializeOwned;
 pub mod observer;
 
 pub trait ConfigType {
-    fn check_set(path: &[&str], value: &str) -> Result<(), failure::Error>;
+    fn check_set<'a>(
+        mut path: impl Iterator<Item = &'a str>,
+        value: &str,
+    ) -> Result<(), failure::Error>;
     fn set(&mut self, path: &[&str], value: &str) -> Result<(), failure::Error>;
     fn set2<'a>(
         &mut self,
@@ -23,8 +26,11 @@ pub trait ConfigType {
 macro_rules! basic_impl {
     ($ty:ty) => {
         impl $crate::ConfigType for $ty {
-            fn check_set(path: &[&str], value: &str) -> Result<(), failure::Error> {
-                if path.is_empty() {
+            fn check_set<'a>(
+                mut path: impl Iterator<Item = &'a str>,
+                value: &str,
+            ) -> Result<(), failure::Error> {
+                if path.next().is_none() {
                     ron::de::from_str::<Self>(value)?;
                     Ok(())
                 } else {
@@ -65,8 +71,11 @@ basic_impl!(f64);
 basic_impl!(bool);
 
 impl ConfigType for String {
-    fn check_set(path: &[&str], value: &str) -> Result<(), failure::Error> {
-        if path.is_empty() {
+    fn check_set<'a>(
+        mut path: impl Iterator<Item = &'a str>,
+        value: &str,
+    ) -> Result<(), failure::Error> {
+        if path.next().is_none() {
             Ok(())
         } else {
             bail!["Path too long"]
@@ -90,7 +99,10 @@ impl ConfigType for String {
 }
 
 impl<X: DeserializeOwned, Y: DeserializeOwned> ConfigType for (X, Y) {
-    fn check_set(path: &[&str], value: &str) -> Result<(), failure::Error> {
+    fn check_set<'a>(
+        mut path: impl Iterator<Item = &'a str>,
+        value: &str,
+    ) -> Result<(), failure::Error> {
         Ok(())
     }
     fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
@@ -137,19 +149,18 @@ macro_rules! config {
             $(pub $x: $y),*
         }
         impl $crate::ConfigType for $name {
-            fn check_set(path: &[&str], value: &str) -> Result<(), failure::Error> {
-                if path.is_empty() {
-                    $crate::bail!["Path is too short"];
-                }
-
-                match path[0] {
+            fn check_set<'a>(mut path: impl Iterator<Item = &'a str>, value: &str) -> Result<(), failure::Error> {
+                match path.next() {
                     $(
-                    stringify![$x] => {
-                        <$y>::check_set(&path[1..], value)
+                    Some(stringify![$x]) => {
+                        <$y>::check_set(path, value)
                     }
                     )*
-                    _ => {
-                        $crate::bail!["Path not found"]
+                    Some(_) => {
+                        $crate::bail!["Path is not found"]
+                    }
+                    None => {
+                        $crate::bail!["Path is too short"]
                     }
                 }
             }
@@ -267,11 +278,11 @@ mod tests {
         ];
 
         let mut x = Single::default();
-        assert![Single::check_set(&["entry"], "0.3").is_ok()];
-        assert![Single::check_set(&["entry"], "string").is_err()];
-        assert![Single::check_set(&["kek", "nice"], "3").is_ok()];
-        assert![Single::check_set(&["kek"], "123").is_err()];
-        assert![Single::check_set(&["kek", "nice"], "0.3").is_err()];
+        assert![Single::check_set(std::iter::once("entry"), "0.3").is_ok()];
+        assert![Single::check_set(std::iter::once("entry"), "string").is_err()];
+        assert![Single::check_set("kek.nice".split('.'), "3").is_ok()];
+        assert![Single::check_set(std::iter::once("kek"), "123").is_err()];
+        assert![Single::check_set("kek.nice".split('.'), "0.3").is_err()];
 
         x.set(&["entry"], "0.3");
         assert_eq![0.3, x.entry];
