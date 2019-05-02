@@ -10,6 +10,11 @@ pub mod observer;
 pub trait ConfigType {
     fn check_set(path: &[&str], value: &str) -> Result<(), failure::Error>;
     fn set(&mut self, path: &[&str], value: &str) -> Result<(), failure::Error>;
+    fn set2<'a>(
+        &mut self,
+        mut path: impl Iterator<Item = &'a str>,
+        value: &str,
+    ) -> Result<(), failure::Error>;
     fn get_descendants() -> &'static [&'static str] {
         &[]
     }
@@ -23,10 +28,21 @@ macro_rules! basic_impl {
                     ron::de::from_str::<Self>(value)?;
                     Ok(())
                 } else {
-                    bail!["Path too long"]
+                    $crate::bail!["Path too long"]
                 }
             }
             fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
+                *self = ron::de::from_str(value)?;
+                Ok(())
+            }
+            fn set2<'a>(
+                &mut self,
+                mut path: impl Iterator<Item = &'a str>,
+                value: &str,
+            ) -> Result<(), failure::Error> {
+                if let Some(item) = path.next() {
+                    $crate::bail!["Path too long"];
+                }
                 *self = ron::de::from_str(value)?;
                 Ok(())
             }
@@ -60,6 +76,17 @@ impl ConfigType for String {
         *self = value.into();
         Ok(())
     }
+    fn set2<'a>(
+        &mut self,
+        mut path: impl Iterator<Item = &'a str>,
+        value: &str,
+    ) -> Result<(), failure::Error> {
+        if let Some(item) = path.next() {
+            bail!["Path too long"];
+        }
+        *self = ron::de::from_str(value)?;
+        Ok(())
+    }
 }
 
 impl<X: DeserializeOwned, Y: DeserializeOwned> ConfigType for (X, Y) {
@@ -67,6 +94,17 @@ impl<X: DeserializeOwned, Y: DeserializeOwned> ConfigType for (X, Y) {
         Ok(())
     }
     fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
+        *self = ron::de::from_str(value)?;
+        Ok(())
+    }
+    fn set2<'a>(
+        &mut self,
+        mut path: impl Iterator<Item = &'a str>,
+        value: &str,
+    ) -> Result<(), failure::Error> {
+        if let Some(item) = path.next() {
+            bail!["Path too long"];
+        }
         *self = ron::de::from_str(value)?;
         Ok(())
     }
@@ -129,6 +167,22 @@ macro_rules! config {
                     _ => {
                         $crate::bail!["Path not found"]
                     }
+                }
+            }
+            fn set2<'a>(&mut self, mut path: impl Iterator<Item = &'a str>, value: &str) -> Result<(), failure::Error> {
+                if let Some(item) = path.next() {
+                    match item {
+                        $(
+                            stringify![$x] => {
+                                self.$x.set2(path, value)
+                            }
+                        )*
+                        _ => {
+                            $crate::bail!["Path not found"]
+                        }
+                    }
+                } else {
+                    $crate::bail!["Path too short"];
                 }
             }
             fn get_descendants() -> &'static [&'static str] {
@@ -221,5 +275,13 @@ mod tests {
 
         x.set(&["entry"], "0.3");
         assert_eq![0.3, x.entry];
+
+        x.set2("kek.nice".split('.'), "1234");
+        assert_eq![1234, x.kek.nice];
+    }
+
+    #[test]
+    fn simple_split() {
+        println!["{:?}", "lorem.ipsum.dolor".split('.').collect::<Vec<_>>()];
     }
 }
