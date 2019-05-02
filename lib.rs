@@ -1,25 +1,23 @@
 #![feature(test)]
 extern crate test;
 
+pub use failure::bail;
 use serde::de::DeserializeOwned;
 
 pub mod observer;
 
 pub trait ConfigType {
-    fn set(&mut self, path: Path, value: String) -> Result<(), failure::Error>;
-    fn is_leaf() -> bool {
-        true
-    }
-    fn get_paths() -> Vec<Path> {
-        Vec::new()
+    fn set(&mut self, path: &[&str], value: &str) -> Result<(), failure::Error>;
+    fn get_descendants() -> &'static [&'static str] {
+        &[]
     }
 }
 
 macro_rules! basic_impl {
     ($ty:ty) => {
         impl $crate::ConfigType for $ty {
-            fn set(&mut self, _path: Path, value: String) -> Result<(), failure::Error> {
-                *self = ron::de::from_str(&value)?;
+            fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
+                *self = ron::de::from_str(value)?;
                 Ok(())
             }
         }
@@ -41,20 +39,20 @@ basic_impl!(f64);
 basic_impl!(bool);
 
 impl ConfigType for String {
-    fn set(&mut self, _path: Path, value: String) -> Result<(), failure::Error> {
-        *self = value;
+    fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
+        *self = value.into();
         Ok(())
     }
 }
 
 impl<X: DeserializeOwned, Y: DeserializeOwned> ConfigType for (X, Y) {
-    fn set(&mut self, _path: Path, value: String) -> Result<(), failure::Error> {
-        *self = ron::de::from_str(&value)?;
+    fn set(&mut self, _path: &[&str], value: &str) -> Result<(), failure::Error> {
+        *self = ron::de::from_str(value)?;
         Ok(())
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Path {
     nodes: Vec<String>,
 }
@@ -73,18 +71,6 @@ impl Path {
     pub fn len(&self) -> usize {
         self.nodes.len()
     }
-}
-
-// Note: makes everything pub
-#[macro_export]
-macro_rules! is_string {
-    { String } => {true};
-    { $y:ty } => {false};
-}
-#[macro_export]
-macro_rules! is_f32 {
-    { f32 } => {true};
-    { $y:ty } => {false};
 }
 
 #[macro_export]
@@ -114,30 +100,25 @@ macro_rules! config {
             $(pub $x: $y),*
         }
         impl $crate::ConfigType for $name {
-            fn is_leaf() -> bool {false}
-            fn set(&mut self, mut path: $crate::Path, value: String) -> Result<(), failure::Error> {
-                use failure::bail;
-                // TODO/NOTE: path could also easily be &mut if that performs better
+            fn set(&mut self, mut path: &[&str], value: &str) -> Result<(), failure::Error> {
+                if path.is_empty() {
+                    $crate::bail!["Path is too short"];
+                }
 
-                match path.pop_front() {
-                    Some(field) => {
-                        $(
-                        if field == stringify!($x) {
-                            self.$x.set(path.clone(), value.clone())?;
-                        }
-                        // TODO: else-if, and else: error
-                        )*
-                    },
-                    None => bail!("Error in path"),
+                match path[0] {
+                    $(
+                    stringify![$x] => {
+                        self.$x.set(&path[1..], value);
+                    }
+                    )*
+                    _ => {
+                        $crate::bail!["Path not found"];
+                    }
                 }
                 Ok(())
             }
-            fn get_paths() -> Vec<$crate::Path> {
-                let mut paths = Vec::new();
-                $( {
-                    get_paths_recurse!($x: $y, paths);
-                } )*
-                paths
+            fn get_descendants() -> &'static [&'static str] {
+                &[$(stringify![$x]),*]
             }
         }
     };
@@ -156,10 +137,8 @@ macro_rules! config {
     { @define $(#[$($m:meta)*])* $x:ident: $y:ty, $($rest:tt)* } => {
         $crate::config!{@define $(#[$($m)*])* $($rest)*}
     };
-    { @define $(#[$($m:meta)*])* $x:ident: $y:ty } => {
-    };
-    { @define $(#[$($m:meta)*])* } => {
-    };
+    { @define $(#[$($m:meta)*])* $x:ident: $y:ty } => {};
+    { @define $(#[$($m:meta)*])* } => {};
 }
 
 #[cfg(test)]
@@ -205,5 +184,27 @@ mod tests {
         };
         x.entry.entry.real_entry = 1.0;
         assert_eq![1.0, x.entry.entry.real_entry];
+    }
+
+    #[test]
+    fn single_entry_get_paths() {
+        config![
+            #[derive(Default)]
+            struct Single {
+                entry: f32,
+                kek: TopKek {
+                    nice: i32
+                }
+            }
+        ];
+
+        let mut x = Single::default();
+        x.set(&["entry"], "0.3");
+        assert_eq![0.3, x.entry];
+        // let vec: Vec<Path> = vec![];
+        // assert_eq![vec, Single::get_paths()];
+        for i in Single::get_descendants() {
+            println!["{}", i];
+        }
     }
 }
