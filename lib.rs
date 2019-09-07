@@ -9,12 +9,12 @@ pub mod observer;
 
 pub trait ConfigType {
     fn check_set<'a>(
-        mut path: impl Iterator<Item = &'a str>,
+        path: impl Iterator<Item = &'a str>,
         value: &str,
     ) -> Result<(), failure::Error>;
     fn set<'a>(
         &mut self,
-        mut path: impl Iterator<Item = &'a str>,
+        path: impl Iterator<Item = &'a str>,
         value: &str,
     ) -> Result<(), failure::Error>;
     fn get_descendants() -> &'static [&'static str] {
@@ -41,7 +41,7 @@ macro_rules! basic_impl {
                 mut path: impl Iterator<Item = &'a str>,
                 value: &str,
             ) -> Result<(), failure::Error> {
-                if let Some(item) = path.next() {
+                if path.next().is_some() {
                     $crate::bail!["Path too long"];
                 }
                 *self = ron::de::from_str(value)?;
@@ -68,7 +68,7 @@ basic_impl!(bool);
 impl ConfigType for String {
     fn check_set<'a>(
         mut path: impl Iterator<Item = &'a str>,
-        value: &str,
+        _value: &str,
     ) -> Result<(), failure::Error> {
         if path.next().is_none() {
             Ok(())
@@ -81,7 +81,7 @@ impl ConfigType for String {
         mut path: impl Iterator<Item = &'a str>,
         value: &str,
     ) -> Result<(), failure::Error> {
-        if let Some(item) = path.next() {
+        if path.next().is_some() {
             bail!["Path too long"];
         }
         *self = ron::de::from_str(value)?;
@@ -94,7 +94,7 @@ impl<X: DeserializeOwned, Y: DeserializeOwned> ConfigType for (X, Y) {
         mut path: impl Iterator<Item = &'a str>,
         value: &str,
     ) -> Result<(), failure::Error> {
-        if let Some(item) = path.next() {
+        if path.next().is_some() {
             bail!["Path too long"];
         }
         ron::de::from_str::<Self>(value)?;
@@ -105,7 +105,7 @@ impl<X: DeserializeOwned, Y: DeserializeOwned> ConfigType for (X, Y) {
         mut path: impl Iterator<Item = &'a str>,
         value: &str,
     ) -> Result<(), failure::Error> {
-        if let Some(item) = path.next() {
+        if path.next().is_some() {
             bail!["Path too long"];
         }
         *self = ron::de::from_str(value)?;
